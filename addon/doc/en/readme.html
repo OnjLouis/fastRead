@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FastRead</title>
+<style>
+body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; line-height: 1.5; margin: 1.5rem; }
+h1, h2 { line-height: 1.2; }
+.kbd { padding: 0.1rem 0.35rem; border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 4px; background: #f7f7f7; }
+ul { margin-top: 0.25rem; }
+</style>
+</head>
+<body>
+<h1>FastRead</h1>
+
+<p>
+FastRead is an NVDA add-on for text that changes frequently and needs to be heard immediately.
+It is useful for browser dashboards, upload or download speeds, CPU meters, status fields,
+terminal output, progress text, and similar live readouts.
+</p>
+
+<p>
+When FastRead detects a change, it cancels the previous FastRead message and speaks the newest
+text straight away. This avoids a queue of stale messages building up while a value is changing.
+</p>
+
+<h2>Using FastRead</h2>
+<ol>
+<li>Move focus, the browse cursor, or the application cursor to the item you want to monitor.</li>
+<li>Press <span class="kbd">NVDA</span>+<span class="kbd">Y</span> to turn FastRead on.</li>
+<li>Leave the cursor on the changing item while it updates.</li>
+<li>Press <span class="kbd">NVDA</span>+<span class="kbd">Y</span> again to turn FastRead off.</li>
+</ol>
+
+<h2>What It Reads</h2>
+<ul>
+<li><strong>Browsers and browse mode:</strong> FastRead follows the current line exposed by NVDA's browse/application cursor and speaks the full changed value. For example, a change from 66% to 67% is spoken as 67%, not just 7.</li>
+<li><strong>Terminals and command output:</strong> FastRead tries to speak only newly added text, so commands such as ping or tracert can be followed without re-reading the whole buffer.</li>
+<li><strong>Focused controls:</strong> FastRead watches the focused control when no browse-mode document is active.</li>
+</ul>
+
+<h2>Notes</h2>
+<ul>
+<li>FastRead is intended for one actively monitored item at a time.</li>
+<li>It works best when the cursor remains on the value or line you want to follow.</li>
+<li>If focus moves to another application or control, FastRead resets its monitor rather than comparing unrelated text.</li>
+<li>FastRead avoids reading entire browser documents, because doing so can be slow or unsafe in large virtual buffers.</li>
+</ul>
+
+<h2>Updates and Source Code</h2>
+<p>
+FastRead checks GitHub releases for updates while it is not distributed through the NVDA Add-on Store.
+The project page is
+<a href="https://github.com/OnjLouis/fastRead">https://github.com/OnjLouis/fastRead</a>.
+</p>
+</body>
+</html>

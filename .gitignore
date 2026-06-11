@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+*.nvda-addon
+nvda-source-ref/
+fastRead_pkg_check/
