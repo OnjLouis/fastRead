@@ -1,5 +1,6 @@
 # FastRead: interrupting live readout monitor for NVDA.
 
+import types
 import time
 
 import addonHandler
@@ -17,7 +18,6 @@ try:
 	from ._onjGithubUpdater import GitHubReleaseUpdater
 except Exception:
 	GitHubReleaseUpdater = None
-
 
 addonHandler.initTranslation()
 
@@ -89,9 +89,27 @@ def _textInfoText(obj):
 	return ""
 
 
+def _liveTextText(obj):
+	getText = getattr(obj, "_getText", None)
+	if getText is None:
+		return ""
+	_refreshLiveText(obj)
+	try:
+		text = getText()
+	except Exception:
+		return ""
+	if text and not text.isspace():
+		return _cleanText(text, preserveLines=True)
+	return ""
+
+
 def _snapshotText(obj):
 	if _isDocumentLike(obj):
 		return _objectText(obj)
+	if _isLiveTextLike(obj):
+		text = _liveTextText(obj)
+		if text:
+			return text
 	text = _textInfoText(obj)
 	if text:
 		return text
@@ -125,6 +143,24 @@ def _className(obj):
 	if obj is None:
 		return ""
 	return obj.__class__.__name__
+
+
+def _isLiveTextLike(obj):
+	if obj is None:
+		return False
+	if callable(getattr(obj, "_getText", None)):
+		return True
+	name = _className(obj).lower()
+	return "livetext" in name or "terminal" in name
+
+
+def _refreshLiveText(obj):
+	if obj is None:
+		return
+	try:
+		obj.redraw()
+	except Exception:
+		pass
 
 
 def _isDocumentLike(obj):
@@ -296,6 +332,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._monitorSource = "focus"
 		self._lastText = ""
 		self._lastSpokenAt = 0
+		self._liveTextHookObj = None
+		self._liveTextHookOriginal = None
 		self._updater = None
 		if GitHubReleaseUpdater:
 			self._updater = GitHubReleaseUpdater("fastRead", "FastRead", "OnjLouis", "fastRead")
@@ -308,12 +346,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._timer.Stop()
 		except Exception:
 			pass
+		self._uninstallLiveTextHook()
 		if self._updater:
 			self._updater.stop()
 		super().terminate()
 
 	def _resetMonitor(self, obj=None):
+		self._uninstallLiveTextHook()
 		self._monitorObj = obj or self._chooseMonitorObject()
+		if _isLiveTextLike(self._monitorObj):
+			self._installLiveTextHook(self._monitorObj)
 		self._lastText = self._currentSnapshot()
 		self._lastSpokenAt = 0
 
@@ -352,6 +394,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return self._monitorObj
 
 	def _currentSnapshot(self):
+		currentObj = self._currentMonitorObject()
+		if _isLiveTextLike(currentObj):
+			text = _snapshotText(currentObj)
+			if text:
+				return text
 		text = _applicationLineText()
 		if text:
 			return text
@@ -360,10 +407,59 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if text:
 				return text
 			return ""
-		currentObj = self._currentMonitorObject()
 		if _isDocumentLike(currentObj):
 			return ""
 		return _snapshotText(currentObj)
+
+	def _installLiveTextHook(self, obj):
+		if obj is None or self._liveTextHookObj is obj:
+			return
+		reportNewText = getattr(obj, "_reportNewText", None)
+		if not callable(reportNewText):
+			return
+
+		def fastReadReportNewText(liveObj, line):
+			if not self._enabled or not _sameObject(liveObj, self._monitorObj):
+				return self._liveTextHookOriginal(line)
+			self._speakImmediate(line)
+
+		self._liveTextHookObj = obj
+		self._liveTextHookOriginal = reportNewText
+		try:
+			obj._reportNewText = types.MethodType(fastReadReportNewText, obj)
+			startMonitoring = getattr(obj, "startMonitoring", None)
+			if callable(startMonitoring):
+				startMonitoring()
+		except Exception:
+			self._liveTextHookObj = None
+			self._liveTextHookOriginal = None
+
+	def _uninstallLiveTextHook(self):
+		obj = self._liveTextHookObj
+		original = self._liveTextHookOriginal
+		self._liveTextHookObj = None
+		self._liveTextHookOriginal = None
+		if obj is None or original is None:
+			return
+		try:
+			obj._reportNewText = original
+		except Exception:
+			pass
+
+	def _speakImmediate(self, text):
+		text = _cleanText(text, MAX_SPOKEN_TEXT_LENGTH)
+		if not text:
+			return
+		now = time.monotonic()
+		if now - self._lastSpokenAt < MIN_SPEAK_INTERVAL_SEC:
+			return
+		self._lastText = text
+		self._lastSpokenAt = now
+		try:
+			speech.cancelSpeech()
+		except Exception:
+			pass
+		ui.message(text)
 
 	def _speakChange(self, text):
 		text = _cleanText(text, preserveLines=True)
@@ -415,6 +511,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._resetMonitor(obj)
 
 	def event_textChange(self, obj, nextHandler):
+		if self._enabled and _isLiveTextLike(obj):
+			if not _sameObject(obj, self._monitorObj):
+				self._monitorSource = "focus"
+				self._resetMonitor(obj)
+				return
+			self._speakChange(_snapshotText(obj))
+			return
 		nextHandler()
 		if self._enabled:
 			self._checkObject(obj)
@@ -445,6 +548,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_toggleFastRead(self, gesture):
 		if self._enabled:
 			self._enabled = False
+			self._uninstallLiveTextHook()
 			self._monitorObj = None
 			self._monitorSource = "focus"
 			self._lastText = ""

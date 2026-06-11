@@ -35,7 +35,7 @@ text straight away. This avoids a queue of stale messages building up while a va
 <h2>What It Reads</h2>
 <ul>
 <li><strong>Browsers and browse mode:</strong> FastRead follows the current line exposed by NVDA's browse/application cursor and speaks the full changed value. For example, a change from 66% to 67% is spoken as 67%, not just 7.</li>
-<li><strong>Terminals and command output:</strong> FastRead tries to speak only newly added text, so commands such as ping or tracert can be followed without re-reading the whole buffer.</li>
+<li><strong>Terminals and command output:</strong> FastRead tries to speak only newly added text, so commands such as ping or tracert can be followed without re-reading the whole buffer. In terminals that use NVDA's live text support, including PuTTY, FastRead interrupts older live output as new lines arrive.</li>
 <li><strong>Focused controls:</strong> FastRead watches the focused control when no browse-mode document is active.</li>
 </ul>
 
@@ -53,5 +53,11 @@ FastRead checks GitHub releases for updates while it is not distributed through 
 The project page is
 <a href="https://github.com/OnjLouis/fastRead">https://github.com/OnjLouis/fastRead</a>.
 </p>
+
+<h2>Changes</h2>
+<ul>
+<li><strong>1.0.1:</strong> Improved support for NVDA live-text terminals such as PuTTY, so live output interrupts stale FastRead speech instead of behaving like queued NVDA terminal speech.</li>
+<li><strong>1.0.0:</strong> Initial release.</li>
+</ul>
 </body>
 </html>
