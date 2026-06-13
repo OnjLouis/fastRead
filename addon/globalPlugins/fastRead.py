@@ -14,11 +14,6 @@ import treeInterceptorHandler
 import ui
 import wx
 
-try:
-	from ._onjGithubUpdater import GitHubReleaseUpdater
-except Exception:
-	GitHubReleaseUpdater = None
-
 addonHandler.initTranslation()
 
 
@@ -334,10 +329,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastSpokenAt = 0
 		self._liveTextHookObj = None
 		self._liveTextHookOriginal = None
-		self._updater = None
-		if GitHubReleaseUpdater:
-			self._updater = GitHubReleaseUpdater("fastRead", "FastRead", "OnjLouis", "fastRead")
-			self._updater.start()
 		self._timer = wx.Timer(_guiMainFrame())
 		self._timer.Bind(wx.EVT_TIMER, self._onTimer)
 
@@ -347,8 +338,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		except Exception:
 			pass
 		self._uninstallLiveTextHook()
-		if self._updater:
-			self._updater.stop()
 		super().terminate()
 
 	def _resetMonitor(self, obj=None):
@@ -566,14 +555,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			))
 		else:
 			ui.message(_("FastRead on"))
-
-	@script(description=_("Check for FastRead updates"))
-	def script_checkForFastReadUpdate(self, gesture):
-		if self._updater:
-			wx.CallAfter(self._updater.checkNow, True)
-		else:
-			ui.message(_("Updater is not available"))
-
 
 def _guiMainFrame():
 	try:

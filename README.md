@@ -15,13 +15,13 @@ FastRead message and speaks the newest text straight away.
 
 FastRead monitors one active item at a time and avoids reading entire browser documents.
 
-## Updates
+## Updates and Source Code
 
-FastRead checks GitHub releases for updates while it is not distributed through the NVDA Add-on Store.
-
+FastRead uses NVDA's add-on update channel for store-compatible updates.
 Repository: <https://github.com/OnjLouis/fastRead>
 
 ## Changes
 
+- 1.0.2: Aligned update handling with NVDA Add-on Store distribution.
 - 1.0.1: Improved support for NVDA live-text terminals such as PuTTY.
 - 1.0.0: Initial release.
