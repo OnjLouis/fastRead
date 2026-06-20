@@ -36,7 +36,7 @@ Repository: <https://github.com/OnjLouis/fastRead>
 
 ## Changes
 
-- 1.0.3: Added three watcher slots with `NVDA+8`, `NVDA+9`, and `NVDA+0` for pinned values in the current window.
+- 1.0.3: Added three watcher slots with `NVDA+8`, `NVDA+9`, and `NVDA+0` for pinned values in the current window. Closes issue #1.
 - 1.0.2: Aligned update handling with NVDA Add-on Store distribution.
 - 1.0.1: Improved support for NVDA live-text terminals such as PuTTY.
 - 1.0.0: Initial release.
