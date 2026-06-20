@@ -8,10 +8,11 @@ import api
 import diffHandler
 import globalPluginHandler
 import speech
-from scriptHandler import script
+from scriptHandler import script, getLastScriptRepeatCount
 import textInfos
 import treeInterceptorHandler
 import ui
+import winUser
 import wx
 
 addonHandler.initTranslation()
@@ -21,6 +22,8 @@ POLL_INTERVAL_MS = 120
 MIN_SPEAK_INTERVAL_SEC = 0.08
 MAX_STORED_TEXT_LENGTH = 20000
 MAX_SPOKEN_TEXT_LENGTH = 500
+WATCHER_SLOTS = (1, 2, 3)
+WATCHER_SPEAK_DELAY_MS = 250
 
 
 def _cleanText(text, maxLength=MAX_STORED_TEXT_LENGTH, preserveLines=False):
@@ -317,6 +320,54 @@ def _objectLocation(obj):
 	return left, top, width, height
 
 
+def _rootWindowHandle(obj):
+	if obj is None:
+		return 0
+	try:
+		handle = int(getattr(obj, "windowHandle", 0) or 0)
+	except Exception:
+		handle = 0
+	if not handle:
+		return 0
+	try:
+		return int(winUser.getAncestor(handle, winUser.GA_ROOT) or handle)
+	except Exception:
+		return handle
+
+
+def _currentRootWindowHandle():
+	handle = _rootWindowHandle(_focusObject())
+	if handle:
+		return handle
+	return _rootWindowHandle(_navigatorObject())
+
+
+class WatcherSlot:
+	def __init__(self, slot, rootWindow, source, textInfo=None, obj=None, lastText=""):
+		self.slot = slot
+		self.rootWindow = rootWindow
+		self.source = source
+		self.textInfo = textInfo
+		self.obj = obj
+		self.lastText = lastText
+		self.unavailableReported = False
+
+	def snapshot(self):
+		if self.rootWindow and _currentRootWindowHandle() != self.rootWindow:
+			return None, False
+		text = ""
+		if self.source == "line" and self.textInfo is not None:
+			try:
+				info = self.textInfo.copy()
+				info.expand(textInfos.UNIT_LINE)
+				text = _cleanText(info.text, preserveLines=True)
+			except Exception:
+				text = ""
+		if not text and self.obj is not None:
+			text = _snapshotText(self.obj)
+		return text, True
+
+
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	scriptCategory = _("FastRead")
 
@@ -329,6 +380,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastSpokenAt = 0
 		self._liveTextHookObj = None
 		self._liveTextHookOriginal = None
+		self._watchers = {}
+		self._pendingWatcherSpeech = {}
+		self._pendingWatcherCallLater = {}
+		self._watcherPollCallLater = None
 		self._timer = wx.Timer(_guiMainFrame())
 		self._timer.Bind(wx.EVT_TIMER, self._onTimer)
 
@@ -337,7 +392,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._timer.Stop()
 		except Exception:
 			pass
+		self._stopWatcherPoll()
 		self._uninstallLiveTextHook()
+		self._watchers.clear()
+		self._pendingWatcherSpeech.clear()
+		for callLater in self._pendingWatcherCallLater.values():
+			try:
+				callLater.Stop()
+			except Exception:
+				pass
+		self._pendingWatcherCallLater.clear()
+		self._watcherPollCallLater = None
 		super().terminate()
 
 	def _resetMonitor(self, obj=None):
@@ -450,6 +515,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			pass
 		ui.message(text)
 
+	def _speakWatcher(self, slot, text):
+		text = _cleanText(text, MAX_SPOKEN_TEXT_LENGTH)
+		if not text:
+			return
+		self._pendingWatcherSpeech[slot] = text
+		if slot not in self._pendingWatcherCallLater:
+			self._pendingWatcherCallLater[slot] = wx.CallLater(
+				WATCHER_SPEAK_DELAY_MS,
+				self._speakPendingWatcher,
+				slot,
+			)
+
+	def _speakPendingWatcher(self, slot):
+		self._pendingWatcherCallLater.pop(slot, None)
+		text = self._pendingWatcherSpeech.pop(slot, "")
+		if not self._watchers.get(slot) or not text:
+			return
+		ui.message(text)
+
 	def _speakChange(self, text):
 		text = _cleanText(text, preserveLines=True)
 		if not text or text == self._lastText:
@@ -457,10 +541,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		now = time.monotonic()
 		if now - self._lastSpokenAt < MIN_SPEAK_INTERVAL_SEC:
 			return
-		if self._monitorSource == "browse":
-			speakText = _cleanText(text, MAX_SPOKEN_TEXT_LENGTH)
-		else:
-			speakText = _cleanText(_speechForChange(self._lastText, text), MAX_SPOKEN_TEXT_LENGTH)
+		speakText = _cleanText(_speechForChange(self._lastText, text), MAX_SPOKEN_TEXT_LENGTH)
 		if not speakText:
 			self._lastText = text
 			return
@@ -491,8 +572,121 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			currentObj = self._currentMonitorObject()
 		self._speakChange(self._currentSnapshot())
 
+	def _checkWatchers(self):
+		if not self._enabled:
+			return False
+		changed = False
+		for slot in WATCHER_SLOTS:
+			watcher = self._watchers.get(slot)
+			if watcher is None:
+				continue
+			text, inWindow = watcher.snapshot()
+			if not inWindow:
+				continue
+			if not text:
+				if not watcher.unavailableReported:
+					watcher.unavailableReported = True
+					self._speakWatcher(slot, _("unavailable"))
+				continue
+			watcher.unavailableReported = False
+			if text != watcher.lastText:
+				watcher.lastText = text
+				changed = True
+				self._speakWatcher(slot, text)
+		return changed
+
 	def _onTimer(self, evt):
 		self._checkObject()
+
+	def _onWatcherPoll(self):
+		self._watcherPollCallLater = None
+		self._checkWatchers()
+		self._scheduleWatcherPoll()
+
+	def _stopWatcherPoll(self):
+		callLater = self._watcherPollCallLater
+		self._watcherPollCallLater = None
+		if callLater is None:
+			return
+		try:
+			callLater.Stop()
+		except Exception:
+			pass
+
+	def _scheduleWatcherPoll(self):
+		if not (self._enabled and self._watchers):
+			self._stopWatcherPoll()
+			return
+		if self._watcherPollCallLater is not None:
+			return
+		self._watcherPollCallLater = wx.CallLater(POLL_INTERVAL_MS, self._onWatcherPoll)
+
+	def _updateWatcherPoll(self):
+		if self._enabled and self._watchers:
+			self._scheduleWatcherPoll()
+		else:
+			self._stopWatcherPoll()
+
+	def _makeWatcher(self, slot):
+		rootWindow = _currentRootWindowHandle()
+		lineInfo = _browseLineInfo()
+		if lineInfo is not None:
+			try:
+				storedInfo = lineInfo.copy()
+				storedInfo.expand(textInfos.UNIT_LINE)
+				text = _cleanText(storedInfo.text, preserveLines=True)
+			except Exception:
+				storedInfo = None
+				text = ""
+			if text:
+				return WatcherSlot(slot, rootWindow, "line", textInfo=storedInfo, obj=_navigatorObject(), lastText=text)
+		source, obj = self._monitorCandidate()
+		text = _snapshotText(obj)
+		if text:
+			return WatcherSlot(slot, rootWindow, source, obj=obj, lastText=text)
+		return None
+
+	def _watcherCommand(self, slot):
+		if getLastScriptRepeatCount() >= 1:
+			if slot in self._watchers:
+				del self._watchers[slot]
+				self._pendingWatcherSpeech.pop(slot, None)
+				callLater = self._pendingWatcherCallLater.pop(slot, None)
+				if callLater is not None:
+					try:
+						callLater.Stop()
+					except Exception:
+						pass
+				self._updateWatcherPoll()
+				ui.message(_("Watcher {slot} cleared").format(slot=slot))
+				return
+			watcher = self._makeWatcher(slot)
+			if watcher is None:
+				ui.message(_("No readable text for watcher {slot}").format(slot=slot))
+				return
+			self._watchers[slot] = watcher
+			self._updateWatcherPoll()
+			ui.message(_("Watcher {slot} set: {text}").format(
+				slot=slot,
+				text=_cleanText(watcher.lastText, MAX_SPOKEN_TEXT_LENGTH),
+			))
+			return
+		watcher = self._watchers.get(slot)
+		if watcher is None:
+			ui.message(_("Watcher {slot} is not set. Press twice to set it.").format(slot=slot))
+			return
+		text, inWindow = watcher.snapshot()
+		if not inWindow:
+			ui.message(_("Watcher {slot} is outside the current window").format(slot=slot))
+			return
+		if text:
+			watcher.lastText = text
+			ui.message(_("Watcher {slot}: {text}").format(
+				slot=slot,
+				text=_cleanText(text, MAX_SPOKEN_TEXT_LENGTH),
+			))
+		else:
+			ui.message(_("Watcher {slot} unavailable").format(slot=slot))
 
 	def event_gainFocus(self, obj, nextHandler):
 		nextHandler()
@@ -542,11 +736,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._monitorSource = "focus"
 			self._lastText = ""
 			self._timer.Stop()
+			self._updateWatcherPoll()
 			ui.message(_("FastRead off"))
 			return
 		self._enabled = True
 		self._resetMonitor()
 		self._timer.Start(POLL_INTERVAL_MS)
+		self._updateWatcherPoll()
 		text = self._lastText
 		if text:
 			ui.message(_("FastRead on {source}: {text}").format(
@@ -555,6 +751,27 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			))
 		else:
 			ui.message(_("FastRead on"))
+
+	@script(
+		description=_("FastRead watcher 1. Single press to read; double press to set or clear."),
+		gesture="kb:NVDA+8",
+	)
+	def script_watcher1(self, gesture):
+		self._watcherCommand(1)
+
+	@script(
+		description=_("FastRead watcher 2. Single press to read; double press to set or clear."),
+		gesture="kb:NVDA+9",
+	)
+	def script_watcher2(self, gesture):
+		self._watcherCommand(2)
+
+	@script(
+		description=_("FastRead watcher 3. Single press to read; double press to set or clear."),
+		gesture="kb:NVDA+0",
+	)
+	def script_watcher3(self, gesture):
+		self._watcherCommand(3)
 
 def _guiMainFrame():
 	try:

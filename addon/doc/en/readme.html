@@ -32,6 +32,26 @@ text straight away. This avoids a queue of stale messages building up while a va
 <li>Press <span class="kbd">NVDA</span>+<span class="kbd">Y</span> again to turn FastRead off.</li>
 </ol>
 
+<h2>Watcher Slots</h2>
+<p>
+FastRead can also pin up to three watched items or lines. This is useful when a value changes
+somewhere else in the same window while you move focus to another control, such as a price
+changing while you alter options on a web page.
+</p>
+<ul>
+<li><span class="kbd">NVDA</span>+<span class="kbd">8</span>: read watcher 1. Press twice quickly to set it if empty, or clear it if already set.</li>
+<li><span class="kbd">NVDA</span>+<span class="kbd">9</span>: read watcher 2. Press twice quickly to set it if empty, or clear it if already set.</li>
+<li><span class="kbd">NVDA</span>+<span class="kbd">0</span>: read watcher 3. Press twice quickly to set it if empty, or clear it if already set.</li>
+</ul>
+<p>
+Watcher slots can be set, read, or cleared even when the main FastRead monitor is off.
+They only speak automatically while FastRead is on. They stay limited to the same top-level window,
+so a watcher set in one browser window will not keep speaking while you work in another app.
+When a watched value changes, FastRead speaks the full new watched text.
+Automatic watcher speech is queued politely after FastRead's own change announcement, so the
+main changed line and the watched value can both be heard.
+</p>
+
 <h2>What It Reads</h2>
 <ul>
 <li><strong>Browsers and browse mode:</strong> FastRead follows the current line exposed by NVDA's browse/application cursor and speaks the full changed value. For example, a change from 66% to 67% is spoken as 67%, not just 7.</li>
@@ -41,7 +61,7 @@ text straight away. This avoids a queue of stale messages building up while a va
 
 <h2>Notes</h2>
 <ul>
-<li>FastRead is intended for one actively monitored item at a time.</li>
+<li>FastRead can follow one active cursor item plus up to three pinned watcher slots.</li>
 <li>It works best when the cursor remains on the value or line you want to follow.</li>
 <li>If focus moves to another application or control, FastRead resets its monitor rather than comparing unrelated text.</li>
 <li>FastRead avoids reading entire browser documents, because doing so can be slow or unsafe in large virtual buffers.</li>
@@ -56,6 +76,7 @@ The project page is
 
 <h2>Changes</h2>
 <ul>
+<li><strong>1.0.3:</strong> Added three watcher slots with NVDA+8, NVDA+9, and NVDA+0. Watchers can follow pinned values in the same window while focus moves elsewhere. They can be set and read while FastRead is off, but only speak automatically while FastRead is on. A single press reads a watcher; a double press sets or clears it.</li>
 <li><strong>1.0.2:</strong> Aligned update handling with NVDA Add-on Store distribution.</li>
 <li><strong>1.0.1:</strong> Improved support for NVDA live-text terminals such as PuTTY, so live output interrupts stale FastRead speech instead of behaving like queued NVDA terminal speech.</li>
 <li><strong>1.0.0:</strong> Initial release.</li>
