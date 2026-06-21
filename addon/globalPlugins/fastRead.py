@@ -5,6 +5,7 @@ import time
 
 import addonHandler
 import api
+import controlTypes
 import diffHandler
 import globalPluginHandler
 import speech
@@ -24,6 +25,10 @@ MAX_STORED_TEXT_LENGTH = 20000
 MAX_SPOKEN_TEXT_LENGTH = 500
 WATCHER_SLOTS = (1, 2, 3)
 WATCHER_SPEAK_DELAY_MS = 250
+SELECT_INSTRUCTION_PREFIXES = (
+	"click to select an item for ",
+	"click to select ",
+)
 
 
 def _cleanText(text, maxLength=MAX_STORED_TEXT_LENGTH, preserveLines=False):
@@ -36,9 +41,28 @@ def _cleanText(text, maxLength=MAX_STORED_TEXT_LENGTH, preserveLines=False):
 		text = "\n".join(line for line in lines if line)
 	else:
 		text = " ".join(text.replace("\r", " ").replace("\n", " ").split())
+	text = _stripSelectionInstructionText(text, preserveLines=preserveLines)
 	if maxLength and len(text) > maxLength:
 		text = text[-maxLength:].lstrip()
 	return text
+
+
+def _stripSelectionInstructionText(text, preserveLines=False):
+	if not text:
+		return ""
+	lines = text.split("\n") if preserveLines else [text]
+	cleanedLines = []
+	for line in lines:
+		stripped = line.strip()
+		lower = stripped.lower()
+		for prefix in SELECT_INSTRUCTION_PREFIXES:
+			if lower.startswith(prefix) and ". " in stripped:
+				possibleValue = stripped.split(". ", 1)[1].strip()
+				if possibleValue:
+					stripped = possibleValue
+				break
+		cleanedLines.append(stripped)
+	return "\n".join(line for line in cleanedLines if line)
 
 
 def _objectText(obj):
@@ -150,6 +174,18 @@ def _isLiveTextLike(obj):
 		return True
 	name = _className(obj).lower()
 	return "livetext" in name or "terminal" in name
+
+
+def _isOrdinaryEditableText(obj):
+	if obj is None or _isLiveTextLike(obj):
+		return False
+	try:
+		if obj.role == controlTypes.Role.EDITABLETEXT:
+			return True
+	except Exception:
+		pass
+	name = _className(obj).lower()
+	return "editabletext" in name or "editor" in name
 
 
 def _refreshLiveText(obj):
@@ -300,14 +336,35 @@ def _speechForChange(oldText, newText):
 	except Exception:
 		lines = []
 	if lines:
-		return " ".join(lines)
+		speakText = " ".join(lines)
+		if _changeFragmentTooSmall(speakText, newText):
+			return newText
+		return speakText
 	if not oldText:
 		return newText
 	if newText.startswith(oldText):
-		return newText[len(oldText):].strip()
+		speakText = newText[len(oldText):].strip()
+		if _changeFragmentTooSmall(speakText, newText):
+			return newText
+		return speakText
 	if oldText in newText:
-		return newText.rsplit(oldText, 1)[-1].strip()
+		speakText = newText.rsplit(oldText, 1)[-1].strip()
+		if _changeFragmentTooSmall(speakText, newText):
+			return newText
+		return speakText
 	return newText
+
+
+def _changeFragmentTooSmall(fragment, fullText):
+	fragment = _cleanText(fragment, maxLength=0)
+	fullText = _cleanText(fullText, maxLength=0)
+	if not fragment or len(fullText) < 12:
+		return False
+	if len(fragment) <= 2:
+		return True
+	if len(fragment) <= 4 and not any(ch.isalpha() for ch in fragment):
+		return True
+	return False
 
 
 def _objectLocation(obj):
@@ -418,10 +475,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return obj
 
 	def _monitorCandidate(self):
+		focusObj = _focusObject()
+		if _isOrdinaryEditableText(focusObj):
+			return "typing", None
 		browseObj = _browseTextObject()
 		if browseObj is not None:
 			return "browse", browseObj
-		focusObj = _focusObject()
 		navObj = _navigatorObject()
 		if _betterReviewCandidate(navObj, focusObj):
 			return "review", navObj
@@ -445,9 +504,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# document refreshes. Reading the current navigator object keeps the
 			# monitor attached to the item the user is reviewing.
 			return _navigatorObject() or self._monitorObj
+		if self._monitorSource == "typing":
+			return None
 		return self._monitorObj
 
 	def _currentSnapshot(self):
+		if self._monitorSource == "typing":
+			return ""
 		currentObj = self._currentMonitorObject()
 		if _isLiveTextLike(currentObj):
 			text = _snapshotText(currentObj)
@@ -555,6 +618,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _checkObject(self, obj=None):
 		if not self._enabled:
+			return
+		if _isOrdinaryEditableText(_focusObject()):
+			self._monitorSource = "typing"
+			self._monitorObj = None
+			self._lastText = ""
 			return
 		if self._monitorSourceChanged():
 			self._resetMonitor()
@@ -702,7 +770,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._speakChange(_snapshotText(obj))
 			return
 		nextHandler()
-		if self._enabled:
+		if self._enabled and not _isOrdinaryEditableText(obj):
 			self._checkObject(obj)
 
 	def event_nameChange(self, obj, nextHandler):

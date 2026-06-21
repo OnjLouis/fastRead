@@ -11,7 +11,7 @@ FastRead message and speaks the newest text straight away.
 
 - Browsers and browse mode: follows the current line exposed by NVDA's browse/application cursor and speaks the useful changed text.
 - Terminals and command output: speaks newly added text where possible, including interrupting live output in NVDA live-text terminals such as PuTTY.
-- Focused controls: watches the focused control when no browse-mode document is active.
+- Focused controls: watches non-edit focused controls when no browse-mode document is active.
 
 FastRead monitors one active item at a time and avoids reading entire browser documents.
 
@@ -29,6 +29,9 @@ Watchers can be set, read, or cleared while FastRead is off. They only speak aut
 while FastRead is on, and automatic watcher speech is queued politely after FastRead's own
 change announcement.
 
+FastRead avoids ordinary edit fields while typing so it does not duplicate NVDA's normal
+character echo. Terminal and live-output controls are still monitored.
+
 ## Updates and Source Code
 
 FastRead uses NVDA's add-on update channel for store-compatible updates.
@@ -36,6 +39,7 @@ Repository: <https://github.com/OnjLouis/fastRead>
 
 ## Changes
 
+- 1.0.4: Improved browser combo-box change speech when a diff would only produce a tiny fragment, and avoided ordinary edit fields while typing. Follow-up for issue #1.
 - 1.0.3: Added three watcher slots with `NVDA+8`, `NVDA+9`, and `NVDA+0` for pinned values in the current window. Closes issue #1.
 - 1.0.2: Aligned update handling with NVDA Add-on Store distribution.
 - 1.0.1: Improved support for NVDA live-text terminals such as PuTTY.

@@ -56,13 +56,14 @@ main changed line and the watched value can both be heard.
 <ul>
 <li><strong>Browsers and browse mode:</strong> FastRead follows the current line exposed by NVDA's browse/application cursor and speaks the full changed value. For example, a change from 66% to 67% is spoken as 67%, not just 7.</li>
 <li><strong>Terminals and command output:</strong> FastRead tries to speak only newly added text, so commands such as ping or tracert can be followed without re-reading the whole buffer. In terminals that use NVDA's live text support, including PuTTY, FastRead interrupts older live output as new lines arrive.</li>
-<li><strong>Focused controls:</strong> FastRead watches the focused control when no browse-mode document is active.</li>
+<li><strong>Focused controls:</strong> FastRead watches non-edit focused controls when no browse-mode document is active.</li>
 </ul>
 
 <h2>Notes</h2>
 <ul>
 <li>FastRead can follow one active cursor item plus up to three pinned watcher slots.</li>
 <li>It works best when the cursor remains on the value or line you want to follow.</li>
+<li>FastRead does not monitor ordinary edit fields while you type, so it should not duplicate NVDA's normal character echo. Terminal and live-output controls are still monitored.</li>
 <li>If focus moves to another application or control, FastRead resets its monitor rather than comparing unrelated text.</li>
 <li>FastRead avoids reading entire browser documents, because doing so can be slow or unsafe in large virtual buffers.</li>
 </ul>
@@ -76,6 +77,7 @@ The project page is
 
 <h2>Changes</h2>
 <ul>
+<li><strong>1.0.4:</strong> Improved browser combo-box changes so very small diff fragments, such as a lone number, fall back to the full changed value. FastRead now also avoids ordinary edit fields while typing to prevent duplicate character echo. Follow-up for <a href="https://github.com/OnjLouis/fastRead/issues/1">issue #1</a>.</li>
 <li><strong>1.0.3:</strong> Added three watcher slots with NVDA+8, NVDA+9, and NVDA+0. Watchers can follow pinned values in the same window while focus moves elsewhere. They can be set and read while FastRead is off, but only speak automatically while FastRead is on. A single press reads a watcher; a double press sets or clears it. Closes <a href="https://github.com/OnjLouis/fastRead/issues/1">issue #1</a>.</li>
 <li><strong>1.0.2:</strong> Aligned update handling with NVDA Add-on Store distribution.</li>
 <li><strong>1.0.1:</strong> Improved support for NVDA live-text terminals such as PuTTY, so live output interrupts stale FastRead speech instead of behaving like queued NVDA terminal speech.</li>
